@@ -35,31 +35,16 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/langgraph-backend:latest
             ghcr.io/${{ github.repository_owner }}/langgraph-backend:${{ github.sha }}
 
-      - name: Attempt deploy with LangGraph CLI (using LANGCHAIN_API_KEY)
+      - name: Deploy using Python script
         env:
           LANGCHAIN_API_KEY: ${{ secrets.LANGCHAIN_API_KEY }}
           IMAGE: ghcr.io/${{ github.repository_owner }}/langgraph-backend:${{ github.sha }}
         run: |
-          echo "Attempting CLI deploy using LangGraph"
-          python -m pip install --upgrade pip
-          pip install langgraph || true
+          echo "🚀 Installing dependencies for deploy script..."
+          pip install requests
+          python deploy_langgraph.py
 
-          if ! command -v langgraph >/dev/null 2>&1; then
-            echo "❌ LangGraph CLI not found after installation."
-            echo "👉 Please ensure the 'langgraph' CLI exists or verify your environment."
-            exit 0
-          fi
-
-          echo "🚀 Running CLI deploy with image: $IMAGE"
-          langgraph deploy --image "$IMAGE" --service-name "langgraph-backend" --api-key "$LANGCHAIN_API_KEY" || {
-            echo "⚠️ CLI deploy failed; verify CLI installation or permissions."
-            exit 0
-          }
-
-      - name: Output success info
+      - name: Output info
         run: |
-          echo "✅ CD completed!"
-          echo "Image pushed to:"
-          echo "  ghcr.io/${{ github.repository_owner }}/langgraph-backend:latest"
-          echo ""
-          echo "If CLI deploy succeeded, your backend should now be live on the LangGraph platform."
+          echo "✅ Docker image built and deployment attempted."
+          echo "Check the above logs for deployment status or endpoint details."
