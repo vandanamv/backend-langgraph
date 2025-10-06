@@ -42,7 +42,8 @@ jobs:
         run: |
           echo "Triggering deployment to LangGraph for image $IMAGE"
           # Replace the URL below with the real LangGraph deploy API endpoint
-          API_URL="https://api.langgraph.example/v1/deployments"
+          API_URL="https://api.langgraph.com/v1/deployments"
+
 
           PAYLOAD=$(jq -n --arg image "$IMAGE" '{image: $image, service_name: "langgraph-backend"}')
 
