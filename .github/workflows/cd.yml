@@ -38,28 +38,47 @@ jobs:
         id: publish
         env:
           LANGCHAIN_API_KEY: ${{ secrets.LANGCHAIN_API_KEY }}
+          LANGGRAPH_API_URL: ${{ secrets.LANGGRAPH_API_URL }}
           IMAGE: ghcr.io/${{ github.repository_owner }}/langgraph-backend:${{ github.sha }}
         run: |
           echo "Triggering deployment to LangGraph for image $IMAGE"
-          # Replace the URL below with the real LangGraph deploy API endpoint
-          API_URL="https://api.langgraph.com/v1/deployments"
+          API_URL="$LANGGRAPH_API_URL"
 
+          # If no API URL configured, skip HTTP deploy and export empty service_url
+          if [ -z "$API_URL" ] || echo "$API_URL" | grep -q "example"; then
+            echo "No LANGGRAPH_API_URL configured; skipping HTTP deploy step"
+            echo "service_url=" >> $GITHUB_OUTPUT
+            exit 0
+          fi
 
           PAYLOAD=$(jq -n --arg image "$IMAGE" '{image: $image, service_name: "langgraph-backend"}')
 
-          RESPONSE=$(curl -sS -X POST "$API_URL" \
+          HTTP_RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST "$API_URL" \
             -H "Authorization: Bearer $LANGCHAIN_API_KEY" \
             -H "Content-Type: application/json" \
-            -d "$PAYLOAD")
+            -d "$PAYLOAD" ) || true
 
-          echo "Deploy response: $RESPONSE"
+          HTTP_STATUS=$(echo "$HTTP_RESPONSE" | tail -n1)
+          HTTP_BODY=$(echo "$HTTP_RESPONSE" | sed '$d')
 
-          # Try to extract a public URL from the response. Adjust the jq path as needed
-          SERVICE_URL=$(echo "$RESPONSE" | jq -r '.url // .service_url // .public_url // empty')
+          echo "HTTP status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" -lt 200 ] || [ "$HTTP_STATUS" -ge 300 ]; then
+            echo "Deployment failed with status $HTTP_STATUS" >&2
+            echo "Response body:" >&2
+            echo "$HTTP_BODY" >&2
+            if [ "$HTTP_STATUS" = "405" ]; then
+              echo "HTTP 405: Method Not Allowed. Check the endpoint path and allowed methods." >&2
+            fi
+            if ! echo "$HTTP_BODY" | jq -e . >/dev/null 2>&1; then
+              echo "Response is not JSON; cannot parse service URL. Aborting." >&2
+              exit 1
+            fi
+          fi
+
+          SERVICE_URL=$(echo "$HTTP_BODY" | jq -r '.url // .service_url // .public_url // empty')
           if [ -z "$SERVICE_URL" ]; then
-            echo "No service URL returned by LangGraph API. Full response:" >&2
-            echo "$RESPONSE" >&2
-            # Still export an empty string so subsequent steps can decide what to do
+            echo "No service URL returned by LangGraph API. Full JSON response:" >&2
+            echo "$HTTP_BODY" >&2
             echo "service_url=" >> $GITHUB_OUTPUT
           else
             echo "Service URL: $SERVICE_URL"
@@ -83,3 +102,26 @@ jobs:
           done
           echo "Service did not become healthy after waiting." >&2
           exit 1
+
+      - name: Deploy with LangGraph CLI (fallback)
+        if: ${{ (secrets.LANGGRAPH_API_URL == '' || secrets.LANGGRAPH_API_URL == null) && secrets.LANGCHAIN_API_KEY != '' }}
+        env:
+          LANGCHAIN_API_KEY: ${{ secrets.LANGCHAIN_API_KEY }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/langgraph-backend:${{ github.sha }}
+        run: |
+          echo "Attempting CLI deploy using langgraph package"
+          python -m pip install --upgrade pip
+          pip install langgraph || true
+
+          if ! command -v langgraph >/dev/null 2>&1; then
+            echo "langgraph CLI not found after installation; the package may not provide a CLI or name differs." >&2
+            echo "Please install the CLI or set LANGGRAPH_API_URL for API deploys." >&2
+            exit 1
+          fi
+
+          # Attempt CLI deploy (adjust flags to match actual CLI)
+          echo "Running: langgraph deploy --image $IMAGE --service-name langgraph-backend --api-key <redacted>"
+          langgraph deploy --image "$IMAGE" --service-name "langgraph-backend" --api-key "$LANGCHAIN_API_KEY" || {
+            echo "CLI deploy failed; please verify CLI usage and authentication." >&2
+            exit 1
+          }
