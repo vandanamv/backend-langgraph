@@ -37,7 +37,7 @@ jobs:
       - name: Deploy to LangGraph (HTTP API)
         id: publish
         env:
-          LANGGRAPH_API_KEY: ${{ secrets.LANGCHAIN_API_KEY}}
+          LANGCHAIN_API_KEY: ${{ secrets.LANGCHAIN_API_KEY }}
           IMAGE: ghcr.io/${{ github.repository_owner }}/langgraph-backend:${{ github.sha }}
         run: |
           echo "Triggering deployment to LangGraph for image $IMAGE"
@@ -47,7 +47,7 @@ jobs:
           PAYLOAD=$(jq -n --arg image "$IMAGE" '{image: $image, service_name: "langgraph-backend"}')
 
           RESPONSE=$(curl -sS -X POST "$API_URL" \
-            -H "Authorization: Bearer $LANGGRAPH_API_KEY" \
+            -H "Authorization: Bearer $LANGCHAIN_API_KEY" \
             -H "Content-Type: application/json" \
             -d "$PAYLOAD")
 
