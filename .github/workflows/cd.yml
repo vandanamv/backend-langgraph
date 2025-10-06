@@ -1,0 +1,37 @@
+name: CD — Deploy LangGraph Backend
+
+on:
+  workflow_run:
+    workflows: ["CI — Test Python Backend"]
+    types:
+      - completed
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/langgraph-backend:${{ github.sha }}
+
+      - name: Deploy to LangGraph
+        run: |
+          echo "Triggering deployment..." 
+          # Placeholder for LangGraph API or CLI call

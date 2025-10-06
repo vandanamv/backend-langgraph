@@ -1,0 +1,8 @@
+[MASTER]
+# Ensure pylint adds the project root to sys.path so imports like
+# `from backend.app import app` resolve during linting.
+# Use the current working directory which is reliable for editors/IDEs
+# that run pylint with the workspace root as the CWD.
+init-hook="import sys, os; sys.path.insert(0, os.path.abspath(os.getcwd()))"
+
+# Optionally you can configure other pylint settings here.
