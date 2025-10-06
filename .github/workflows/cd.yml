@@ -15,6 +15,9 @@ jobs:
     if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
 
+    outputs:
+      service_url: ${{ steps.publish.outputs.service_url }}
+
     steps:
       - uses: actions/checkout@v4
       - name: Log in to GHCR
@@ -31,7 +34,51 @@ jobs:
           push: true
           tags: ghcr.io/${{ github.repository_owner }}/langgraph-backend:${{ github.sha }}
 
-      - name: Deploy to LangGraph
+      - name: Deploy to LangGraph (HTTP API)
+        id: publish
+        env:
+          LANGGRAPH_API_KEY: ${{ secrets.LANGCHAIN_API_KEY}}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/langgraph-backend:${{ github.sha }}
         run: |
-          echo "Triggering deployment..." 
-          # Placeholder for LangGraph API or CLI call
+          echo "Triggering deployment to LangGraph for image $IMAGE"
+          # Replace the URL below with the real LangGraph deploy API endpoint
+          API_URL="https://api.langgraph.example/v1/deployments"
+
+          PAYLOAD=$(jq -n --arg image "$IMAGE" '{image: $image, service_name: "langgraph-backend"}')
+
+          RESPONSE=$(curl -sS -X POST "$API_URL" \
+            -H "Authorization: Bearer $LANGGRAPH_API_KEY" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD")
+
+          echo "Deploy response: $RESPONSE"
+
+          # Try to extract a public URL from the response. Adjust the jq path as needed
+          SERVICE_URL=$(echo "$RESPONSE" | jq -r '.url // .service_url // .public_url // empty')
+          if [ -z "$SERVICE_URL" ]; then
+            echo "No service URL returned by LangGraph API. Full response:" >&2
+            echo "$RESPONSE" >&2
+            # Still export an empty string so subsequent steps can decide what to do
+            echo "service_url=" >> $GITHUB_OUTPUT
+          else
+            echo "Service URL: $SERVICE_URL"
+            echo "service_url=$SERVICE_URL" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Wait for service to become healthy
+        if: ${{ steps.publish.outputs.service_url != '' }}
+        env:
+          SERVICE_URL: ${{ steps.publish.outputs.service_url }}
+        run: |
+          echo "Waiting for $SERVICE_URL to be healthy..."
+          for i in $(seq 1 20); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$SERVICE_URL" || echo "000")
+            echo "Attempt $i: status=$STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "Service healthy!"
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "Service did not become healthy after waiting." >&2
+          exit 1
