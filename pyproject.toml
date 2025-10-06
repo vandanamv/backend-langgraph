@@ -6,5 +6,5 @@ build-backend = "setuptools.build_meta"
 name = "langgraph-backend"
 version = "0.0.0"
 description = "LangGraph backend (minimal packaging for editable install)"
-authors = [ { name = "", email = "" } ]
+authors = [ { name = "vandanamv", email = "vandanareddymv@gmail.com" } ]
 dependencies = []
